@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { readFile } from "node:fs/promises";
 import { getUiChatModels, getUiProviders } from "../rag/llm.js";
 
 function getUiDefaultModels(): string[] {
@@ -12,6 +13,7 @@ function getUiDefaultProviders(): string[] {
 const uiDefaultModels = JSON.stringify(getUiDefaultModels());
 const uiDefaultProviders = JSON.stringify(getUiDefaultProviders());
 const uiAssetVersion = Date.now().toString(36);
+const widgetFileUrl = new URL("../../public/widget.ts", import.meta.url);
 
 const html = `<!doctype html>
 <html lang="es">
@@ -432,5 +434,12 @@ export async function uiRoutes(app: FastifyInstance) {
       .header("Cache-Control", "no-store, max-age=0")
       .type("application/javascript; charset=utf-8")
       .send(uiJs);
+  });
+  app.get("/widget.js", async (_, reply) => {
+    const widgetJs = await readFile(widgetFileUrl, "utf8");
+    reply
+      .header("Cache-Control", "no-store, max-age=0")
+      .type("application/javascript; charset=utf-8")
+      .send(widgetJs);
   });
 }
