@@ -4,16 +4,10 @@ function getLlmTimeoutMs(): number {
   return Math.max(1000, Math.trunc(raw));
 }
 
-export type LlmProvider = "ollama" | "gemini";
-
-function normalizeProvider(raw?: string | null): LlmProvider | null {
-  const v = String(raw ?? "").trim().toLowerCase();
-  if (v === "ollama" || v === "gemini") return v;
-  return null;
-}
+export type LlmProvider = "gemini";
 
 export function getDefaultLlmProvider(): LlmProvider {
-  return normalizeProvider(process.env.LLM_PROVIDER) ?? "ollama";
+  return "gemini";
 }
 
 async function fetchWithTimeout(
@@ -26,8 +20,7 @@ async function fetchWithTimeout(
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (err: any) {
-    const aborted = err?.name === "AbortError";
-    if (aborted) {
+    if (err?.name === "AbortError") {
       throw new Error(`LLM request timeout after ${timeoutMs}ms`);
     }
     throw err;
@@ -41,76 +34,16 @@ function splitUniqueCsv(raw: string): string[] {
 }
 
 export function getUiProviders(): LlmProvider[] {
-  const explicit = (process.env.UI_LLM_PROVIDERS ?? "").trim();
-  if (explicit) {
-    const providers = splitUniqueCsv(explicit)
-      .map((p) => normalizeProvider(p))
-      .filter((p): p is LlmProvider => p !== null);
-    if (providers.length) return providers;
-  }
-  return [getDefaultLlmProvider()];
+  return ["gemini"];
 }
 
-export function getUiChatModels(providerInput?: string): string[] {
-  const provider = normalizeProvider(providerInput) ?? getDefaultLlmProvider();
-
-  if (provider === "ollama") {
-    const raw =
-      process.env.UI_CHAT_MODELS_OLLAMA ??
-      process.env.UI_CHAT_MODELS ??
-      process.env.OLLAMA_CHAT_MODELS ??
-      process.env.OLLAMA_CHAT_MODEL ??
-      "qwen2.5:1.5b-instruct,llama3.2:3b-instruct,phi3:3.8b-mini-instruct";
-    return splitUniqueCsv(raw);
-  }
-
-  if (provider === "gemini") {
-    const raw =
-      process.env.UI_CHAT_MODELS_GEMINI ??
-      process.env.GEMINI_CHAT_MODELS ??
-      process.env.GEMINI_CHAT_MODEL ??
-      "gemini-2.5-flash,gemini-2.5-pro";
-    return splitUniqueCsv(raw);
-  }
-
-  return [];
-}
-
-async function askLlmOllama(prompt: string, model: string): Promise<string> {
-  const timeoutMs = getLlmTimeoutMs();
-  const base = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(
-    /\/$/,
-    "",
-  );
-
-  const res = await fetchWithTimeout(
-    `${base}/api/chat`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        options: {
-          temperature: 0.2,
-        },
-      }),
-    },
-    timeoutMs,
-  );
-
-  const raw = await res.text();
-  if (!res.ok) {
-    throw new Error(`Ollama chat error (${model}): ${res.status} ${res.statusText}. ${raw}`);
-  }
-
-  const data = JSON.parse(raw) as any;
-  const out = data?.message?.content ?? "";
-  return (
-    String(out).trim() ||
-    "No encontré información suficiente en la base de conocimiento."
-  );
+export function getUiChatModels(): string[] {
+  const raw =
+    process.env.UI_CHAT_MODELS_GEMINI ??
+    process.env.GEMINI_CHAT_MODELS ??
+    process.env.GEMINI_CHAT_MODEL ??
+    "gemini-2.5-flash,gemini-2.5-pro";
+  return splitUniqueCsv(raw);
 }
 
 async function askLlmGemini(prompt: string, model: string): Promise<string> {
@@ -154,27 +87,11 @@ async function askLlmGemini(prompt: string, model: string): Promise<string> {
 
 export async function askLlm(
   prompt: string,
-  opts?: { model?: string; provider?: string },
+  opts?: { model?: string },
 ): Promise<string> {
-  const provider = normalizeProvider(opts?.provider) ?? getDefaultLlmProvider();
-
-  if (provider === "ollama") {
-    const model =
-      opts?.model?.trim() ||
-      process.env.OLLAMA_CHAT_MODEL ||
-      "llama3.1:8b-instruct-q4_K_M";
-    return askLlmOllama(prompt, model);
-  }
-
-  if (provider === "gemini") {
-    const model =
-      opts?.model?.trim() ||
-      process.env.GEMINI_CHAT_MODEL ||
-      "gemini-2.5-flash";
-    return askLlmGemini(prompt, model);
-  }
-
-  throw new Error(
-    `Unsupported LLM_PROVIDER='${provider}'. Use 'ollama', 'gemini' or enable NO_LLM=1.`,
-  );
+  const model =
+    opts?.model?.trim() ||
+    process.env.GEMINI_CHAT_MODEL ||
+    "gemini-2.5-flash";
+  return askLlmGemini(prompt, model);
 }

@@ -32,8 +32,6 @@ services:
         value: gemini-2.5-flash
       - key: GEMINI_EMBED_MODEL
         value: gemini-embedding-001
-      - key: UI_LLM_PROVIDERS
-        value: ollama,gemini
       - key: UI_CHAT_MODELS_GEMINI
         value: gemini-2.5-flash,gemini-2.5-pro
       - key: TOP_K

@@ -1,17 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { readFile } from "node:fs/promises";
-import { getUiChatModels, getUiProviders } from "../rag/llm.js";
+import { getUiChatModels } from "../rag/llm.js";
 
 function getUiDefaultModels(): string[] {
   return getUiChatModels();
 }
 
-function getUiDefaultProviders(): string[] {
-  return getUiProviders();
-}
-
 const uiDefaultModels = JSON.stringify(getUiDefaultModels());
-const uiDefaultProviders = JSON.stringify(getUiDefaultProviders());
 const uiAssetVersion = Date.now().toString(36);
 const widgetFileUrl = new URL("../../public/widget.ts", import.meta.url);
 
@@ -184,11 +179,6 @@ const html = `<!doctype html>
         <div id="messages" class="messages"></div>
         <form id="chat-form" class="composer">
           <div class="tools">
-            <label class="model-wrap">Proveedor
-              <select id="provider-select">
-                <option value="">Cargando...</option>
-              </select>
-            </label>
             <label class="model-wrap">Modelo
               <select id="model-select">
                 <option value="">Cargando...</option>
@@ -211,18 +201,9 @@ const form = document.getElementById("chat-form");
 const messages = document.getElementById("messages");
 const question = document.getElementById("question");
 const send = document.getElementById("send");
-const providerSelect = document.getElementById("provider-select");
 const modelSelect = document.getElementById("model-select");
 const API_BASE = String(window.BOXFUL_RAG_API_BASE || "").trim().replace(/\\/$/, "");
-const DEFAULT_PROVIDERS = ${uiDefaultProviders};
 const DEFAULT_MODELS = ${uiDefaultModels};
-let MODELS_BY_PROVIDER = {};
-let CURRENT_BY_PROVIDER = {};
-
-function normalizeProvider(raw) {
-  const v = String(raw || "").trim().toLowerCase();
-  return v === "gemini" || v === "ollama" ? v : "";
-}
 
 function apiUrl(path) {
   const normalizedPath = "/" + String(path || "").replace(/^\\/+/, "");
@@ -265,40 +246,16 @@ function appendMessage(role, text, sources) {
 }
 
 appendMessage("bot", "Hola. Soy el asistente de soporte de Boxful. ¿En qué te ayudo?");
-
-function fillProviders(providers, currentProvider) {
-  providerSelect.innerHTML = "";
-  const list = Array.isArray(providers) && providers.length ? providers : DEFAULT_PROVIDERS;
-  if (!Array.isArray(list) || !list.length) {
-    providerSelect.innerHTML = '<option value="">Sin proveedor</option>';
-    return "";
-  }
-
-  const selected = normalizeProvider(currentProvider) || normalizeProvider(list[0]) || "";
-  for (const provider of list) {
-    const id = normalizeProvider(provider);
-    if (!id) continue;
-    const opt = document.createElement("option");
-    opt.value = id;
-    opt.textContent = id === "gemini" ? "Gemini API" : "Ollama local";
-    if (id === selected) opt.selected = true;
-    providerSelect.appendChild(opt);
-  }
-
-  return providerSelect.value || selected;
-}
-
-function fillModels(provider, currentModel) {
-  const providerId = normalizeProvider(provider);
-  const models = Array.isArray(MODELS_BY_PROVIDER?.[providerId]) ? MODELS_BY_PROVIDER[providerId] : [];
+function fillModels(models, currentModel) {
+  const safeModels = Array.isArray(models) ? models : [];
   modelSelect.innerHTML = "";
 
-  if (!models.length) {
+  if (!safeModels.length) {
     modelSelect.innerHTML = '<option value="">Sin modelos</option>';
     return;
   }
 
-  for (const model of models) {
+  for (const model of safeModels) {
     const opt = document.createElement("option");
     opt.value = model;
     opt.textContent = model;
@@ -312,60 +269,15 @@ async function loadModels() {
     const res = await fetchWithTimeout(apiUrl("v1/models"));
     if (!res.ok) throw new Error("models_http_" + res.status);
     const data = await res.json();
-    const providers = Array.isArray(data?.providers) ? data.providers : [];
-    const defaultProvider = normalizeProvider(data?.provider);
-    MODELS_BY_PROVIDER = data?.models_by_provider && typeof data.models_by_provider === "object"
-      ? data.models_by_provider
-      : {};
-    CURRENT_BY_PROVIDER = data?.current_by_provider && typeof data.current_by_provider === "object"
-      ? data.current_by_provider
-      : {};
-
-    if (!Object.keys(MODELS_BY_PROVIDER).length) {
-      MODELS_BY_PROVIDER = {
-        [defaultProvider || "ollama"]: Array.isArray(data?.models) ? data.models : [],
-      };
-    }
-
-    const provider = fillProviders(providers, defaultProvider);
-    const currentModel = String(CURRENT_BY_PROVIDER?.[provider] || data?.current || "");
-    fillModels(provider, currentModel);
+    const models = Array.isArray(data?.models) ? data.models : [];
+    const currentModel = typeof data?.current === "string" ? data.current : "";
+    fillModels(models, currentModel);
   } catch {
-    providerSelect.innerHTML = "";
-    if (Array.isArray(DEFAULT_PROVIDERS) && DEFAULT_PROVIDERS.length) {
-      for (const provider of DEFAULT_PROVIDERS) {
-        const id = normalizeProvider(provider);
-        if (!id) continue;
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = id === "gemini" ? "Gemini API" : "Ollama local";
-        providerSelect.appendChild(opt);
-      }
-    } else {
-      providerSelect.innerHTML = '<option value="">Error</option>';
-    }
-
-    modelSelect.innerHTML = "";
-    if (Array.isArray(DEFAULT_MODELS) && DEFAULT_MODELS.length) {
-      for (const model of DEFAULT_MODELS) {
-        const opt = document.createElement("option");
-        opt.value = model;
-        opt.textContent = model;
-        modelSelect.appendChild(opt);
-      }
-      return;
-    }
-    modelSelect.innerHTML = '<option value="">Error cargando</option>';
+    fillModels(DEFAULT_MODELS, "");
   }
 }
 
 loadModels();
-
-providerSelect.addEventListener("change", () => {
-  const provider = normalizeProvider(providerSelect.value);
-  const currentModel = String(CURRENT_BY_PROVIDER?.[provider] || "");
-  fillModels(provider, currentModel);
-});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -384,7 +296,6 @@ form.addEventListener("submit", async (e) => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           question: q,
-          provider: providerSelect.value || undefined,
           model: modelSelect.value || undefined,
         })
       },
