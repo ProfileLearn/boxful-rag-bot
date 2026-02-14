@@ -25,7 +25,12 @@ async function main() {
     genReqId: () => crypto.randomUUID(),
   });
 
-  await app.register(helmet);
+  await app.register(helmet, {
+    // Permite embeber la app en iframe y cargar widget.js desde otros dominios (GTM/sitios externos).
+    xFrameOptions: false,
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: false,
+  });
 
   const originsRaw = getEnv("CORS_ORIGINS", "*");
   const origins = originsRaw
