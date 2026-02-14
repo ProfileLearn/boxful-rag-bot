@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: boxful-rag-bot
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: DATA_DIR
+        value: ./data
+      - key: VECTORS_FILE
+        value: ./data/vectors.json
+      - key: KB_ROOT
+        value: https://boxful.freshdesk.com/support/solutions/
+      - key: KB_MAX_PAGES
+        value: "120"
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: EMBED_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_CHAT_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_EMBED_MODEL
+        value: gemini-embedding-001
+      - key: UI_LLM_PROVIDERS
+        value: ollama,gemini
+      - key: UI_CHAT_MODELS_GEMINI
+        value: gemini-2.5-flash,gemini-2.5-pro
+      - key: TOP_K
+        value: "6"
+      - key: MIN_SCORE
+        value: "0.12"
+      - key: INGEST_CONCURRENCY
+        value: "1"
+      - key: CHUNK_SIZE_CHARS
+        value: "950"
+      - key: CHUNK_OVERLAP_CHARS
+        value: "200"
+      - key: USER_AGENT
+        value: "BoxfulRAGBot/0.1 (+https://www.boxful.io)"
+      - key: SCRAPE_RETRIES
+        value: "5"
+      - key: SCRAPE_MIN_DELAY_MS
+        value: "250"
+      - key: SCRAPE_MAX_DELAY_MS
+        value: "2500"
+      - key: LLM_HTTP_TIMEOUT_MS
+        value: "60000"
+      - key: EMBED_HTTP_TIMEOUT_MS
+        value: "15000"
