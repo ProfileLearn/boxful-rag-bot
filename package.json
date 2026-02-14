@@ -1,11 +1,11 @@
 {
   "name": "boxful-rag-bot",
   "version": "0.1.0",
-  "description": "RAG chatbot for Boxful Freshdesk knowledge base using local models",
+  "description": "RAG chatbot for Boxful Freshdesk knowledge base with selectable embedding providers",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build && npm run start",
+    "dev": "tsx src/server.ts",
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/server.js",

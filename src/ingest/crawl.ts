@@ -6,11 +6,15 @@ function getEnv(name: string, fallback?: string): string {
   return v;
 }
 
-const UA = getEnv("USER_AGENT", "BoxfulRAGBot/0.1");
+const UA = getEnv(
+  "USER_AGENT",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 BoxfulRAGBot/0.1",
+);
 const maxPages = Number(process.env.KB_MAX_PAGES ?? "120");
 const retryCount = Number(process.env.SCRAPE_RETRIES ?? "5");
 const minDelayMs = Number(process.env.SCRAPE_MIN_DELAY_MS ?? "250");
 const maxDelayMs = Number(process.env.SCRAPE_MAX_DELAY_MS ?? "2500");
+const requestTimeoutMs = Number(process.env.SCRAPE_HTTP_TIMEOUT_MS ?? "20000");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,23 +39,50 @@ function parseRetryAfterMs(value: string | null): number | null {
 
 async function fetchHtml(url: string): Promise<string> {
   let lastStatus = 0;
+  let lastError = "";
   for (let attempt = 0; attempt <= retryCount; attempt++) {
     if (attempt > 0) {
       const exp = Math.min(maxDelayMs, minDelayMs * 2 ** (attempt - 1));
       await sleep(jitter(exp));
     }
 
-    const res = await fetch(url, {
-      headers: {
-        "user-agent": UA,
-        accept: "text/html,*/*",
-      },
-    });
+    let res: Response;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(1000, requestTimeoutMs));
+      try {
+        res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            "user-agent": UA,
+            accept: "text/html,*/*",
+            "accept-language": "es-AR,es;q=0.9,en;q=0.7",
+            pragma: "no-cache",
+            "cache-control": "no-cache",
+          },
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      lastError = msg;
+      if (attempt === retryCount) {
+        throw new Error(`Fetch failed for ${url}: ${msg}`);
+      }
+      continue;
+    }
 
     if (res.ok) return await res.text();
 
     lastStatus = res.status;
-    const retriable = res.status === 429 || (res.status >= 500 && res.status <= 599);
+    const retriable =
+      res.status === 403 ||
+      res.status === 408 ||
+      res.status === 409 ||
+      res.status === 425 ||
+      res.status === 429 ||
+      (res.status >= 500 && res.status <= 599);
     if (!retriable || attempt === retryCount) {
       throw new Error(`Fetch failed ${res.status} for ${url}`);
     }
@@ -62,7 +93,10 @@ async function fetchHtml(url: string): Promise<string> {
     }
   }
 
-  throw new Error(`Fetch failed ${lastStatus} for ${url}`);
+  if (lastStatus > 0) {
+    throw new Error(`Fetch failed ${lastStatus} for ${url}`);
+  }
+  throw new Error(`Fetch failed for ${url}${lastError ? `: ${lastError}` : ""}`);
 }
 
 function normalizeUrl(u: string): string {
@@ -103,7 +137,8 @@ export async function discoverArticleUrls(): Promise<string[]> {
     let html = "";
     try {
       html = await fetchHtml(pageUrl);
-    } catch {
+    } catch (err: any) {
+      console.warn("Discover failed:", pageUrl, err?.message ?? err);
       continue;
     }
 

@@ -61,12 +61,13 @@ export async function chatRoutes(app: FastifyInstance) {
         msg.includes("Embedding request timeout") ||
         msg.includes("Gemini embeddings error") ||
         msg.includes("Hugging Face embeddings error") ||
+        msg.includes("Embedding dimension mismatch") ||
         msg.includes("fetch failed")
       ) {
         return {
           answer:
             "No pude consultar el servicio de embeddings en este momento.\n\n" +
-            "Revisa tu configuración de embeddings: si usas Gemini, valida GEMINI_API_KEY; si usas Hugging Face, valida HF_API_TOKEN o HF_EMBED_URL.",
+            "Revisa tu configuración de embeddings: si usas Gemini, valida GEMINI_API_KEY; si usas Hugging Face, valida HF_API_TOKEN/HF_EMBED_URL. Si cambiaste proveedor, vuelve a generar vectors.json con ese mismo proveedor.",
           sources: [],
           confidence: "low",
         } as const;

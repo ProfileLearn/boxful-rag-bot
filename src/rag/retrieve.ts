@@ -28,6 +28,12 @@ export async function retrieveTopK(
   const minScore = getEnvNum("MIN_SCORE", 0.78);
 
   const qEmb = await embedText(question, "RETRIEVAL_QUERY", { mode: opts?.embedMode });
+  const expectedDim = index.items[0]?.embedding?.length ?? 0;
+  if (expectedDim > 0 && qEmb.length !== expectedDim) {
+    throw new Error(
+      `Embedding dimension mismatch (query=${qEmb.length}, index=${expectedDim}). Reingesta los vectores con el mismo proveedor de embeddings.`,
+    );
+  }
 
   // brute-force cosine (MVP)
   const scored = index.items.map((it) => ({

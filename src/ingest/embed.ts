@@ -135,7 +135,7 @@ async function embedTextHuggingFace(
 
   const url = hfEmbedUrl
     ? hfEmbedUrl
-    : `https://api-inference.huggingface.co/pipeline/feature-extraction/${encodeURIComponent(hfModel)}`;
+    : `https://router.huggingface.co/hf-inference/models/${encodeURIComponent(hfModel)}/pipeline/feature-extraction`;
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (hfApiToken) headers.Authorization = `Bearer ${hfApiToken}`;
@@ -197,7 +197,9 @@ export function getDefaultEmbedMode(): EmbedMode {
   const envRaw = (process.env.EMBED_PROVIDER ?? "").trim().toLowerCase();
   if (envRaw === "gemini") return "gemini";
   if (envRaw === "huggingface") {
-    return (process.env.HF_EMBED_URL ?? "").trim() ? "local_cpu" : "huggingface_api";
+    const localUrl =
+      (process.env.HF_EMBED_LOCAL_URL ?? "").trim() || (process.env.HF_EMBED_URL ?? "").trim();
+    return localUrl ? "local_cpu" : "huggingface_api";
   }
   return "gemini";
 }

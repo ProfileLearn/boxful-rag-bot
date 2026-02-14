@@ -31,10 +31,32 @@ async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function embedWithRetries(
+  chunk: string,
+  retries: number,
+): Promise<number[]> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await embedText(chunk, "RETRIEVAL_DOCUMENT");
+    } catch (err) {
+      lastErr = err;
+      if (attempt === retries) break;
+      await sleep(250 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
 export async function runIngest() {
   const dataDir = getEnv("DATA_DIR", "./data");
   const vectorsFile = getEnv("VECTORS_FILE", "./data/vectors.json");
   const concurrency = getEnvNum("INGEST_CONCURRENCY", 3);
+  const embedRetries = getEnvNum("EMBED_RETRIES", 2);
 
   await ensureDir(dataDir);
 
@@ -50,7 +72,14 @@ export async function runIngest() {
     articleUrls.map((url) =>
       limit(async () => {
         try {
-          const html = await fetchArticleHtml(url);
+          let html = "";
+          try {
+            html = await fetchArticleHtml(url);
+          } catch (err: any) {
+            console.warn("Failed [crawl]:", url, err?.message ?? err);
+            return;
+          }
+
           const parsed = parseArticleHtml(html);
           if (!parsed) return;
 
@@ -59,7 +88,7 @@ export async function runIngest() {
           for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i]!;
             const id = safeId(`${url}#${i}`);
-            const embedding = await embedText(chunk, "RETRIEVAL_DOCUMENT");
+            const embedding = await embedWithRetries(chunk, embedRetries);
 
             items.push({
               id,
@@ -70,7 +99,7 @@ export async function runIngest() {
             });
           }
         } catch (e: any) {
-          console.warn("Failed:", url, e?.message ?? e);
+          console.warn("Failed [embed]:", url, e?.message ?? e);
         } finally {
           done++;
           if (done % 10 === 0)
