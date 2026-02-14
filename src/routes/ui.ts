@@ -179,6 +179,11 @@ const html = `<!doctype html>
         <div id="messages" class="messages"></div>
         <form id="chat-form" class="composer">
           <div class="tools">
+            <label class="model-wrap">Embeddings
+              <select id="embed-provider-select">
+                <option value="gemini">Gemini API</option>
+              </select>
+            </label>
             <label class="model-wrap">Modelo
               <select id="model-select">
                 <option value="">Cargando...</option>
@@ -202,8 +207,10 @@ const messages = document.getElementById("messages");
 const question = document.getElementById("question");
 const send = document.getElementById("send");
 const modelSelect = document.getElementById("model-select");
+const embedProviderSelect = document.getElementById("embed-provider-select");
 const API_BASE = String(window.BOXFUL_RAG_API_BASE || "").trim().replace(/\\/$/, "");
 const DEFAULT_MODELS = ${uiDefaultModels};
+const DEFAULT_EMBED_PROVIDERS = ["gemini", "huggingface_api", "local_cpu"];
 
 function apiUrl(path) {
   const normalizedPath = "/" + String(path || "").replace(/^\\/+/, "");
@@ -264,6 +271,31 @@ function fillModels(models, currentModel) {
   }
 }
 
+function prettyEmbedProviderName(value) {
+  if (value === "gemini") return "Gemini API";
+  if (value === "huggingface_api") return "Hugging Face API";
+  if (value === "local_cpu") return "CPU local";
+  return value;
+}
+
+function fillEmbedProviders(providers, currentProvider) {
+  const safeProviders = Array.isArray(providers) ? providers : [];
+  embedProviderSelect.innerHTML = "";
+
+  if (!safeProviders.length) {
+    embedProviderSelect.innerHTML = '<option value="gemini">Gemini API</option>';
+    return;
+  }
+
+  for (const provider of safeProviders) {
+    const opt = document.createElement("option");
+    opt.value = provider;
+    opt.textContent = prettyEmbedProviderName(provider);
+    if (provider === currentProvider) opt.selected = true;
+    embedProviderSelect.appendChild(opt);
+  }
+}
+
 async function loadModels() {
   try {
     const res = await fetchWithTimeout(apiUrl("v1/models"));
@@ -271,9 +303,14 @@ async function loadModels() {
     const data = await res.json();
     const models = Array.isArray(data?.models) ? data.models : [];
     const currentModel = typeof data?.current === "string" ? data.current : "";
+    const embedProviders = Array.isArray(data?.embed_providers) ? data.embed_providers : [];
+    const currentEmbedProvider =
+      typeof data?.current_embed_provider === "string" ? data.current_embed_provider : "";
     fillModels(models, currentModel);
+    fillEmbedProviders(embedProviders, currentEmbedProvider);
   } catch {
     fillModels(DEFAULT_MODELS, "");
+    fillEmbedProviders(DEFAULT_EMBED_PROVIDERS, "gemini");
   }
 }
 
@@ -297,6 +334,7 @@ form.addEventListener("submit", async (e) => {
         body: JSON.stringify({
           question: q,
           model: modelSelect.value || undefined,
+          embed_provider: embedProviderSelect.value || undefined,
         })
       },
       60000,

@@ -3,21 +3,27 @@ import { z } from "zod";
 import { retrieveTopK } from "../rag/retrieve.js";
 import { buildStrictPrompt } from "../rag/prompt.js";
 import { askLlm, getUiChatModels } from "../rag/llm.js";
+import { getDefaultEmbedMode, getUiEmbedModes, type EmbedMode } from "../ingest/embed.js";
 
 const ChatIn = z.object({
   question: z.string().min(3).max(2000),
   conversation_id: z.string().optional(),
   model: z.string().min(2).max(120).optional(),
+  embed_provider: z.string().min(2).max(120).optional(),
 });
 
 export async function chatRoutes(app: FastifyInstance) {
   app.get("/v1/models", async () => {
     const models = getUiChatModels();
     const current = process.env.GEMINI_CHAT_MODEL ?? models[0] ?? "";
+    const embedModes = getUiEmbedModes();
+    const currentEmbed = getDefaultEmbedMode();
     return {
       provider: "gemini",
       current,
       models,
+      embed_providers: embedModes,
+      current_embed_provider: currentEmbed,
       providers: ["gemini"],
       models_by_provider: { gemini: models },
       current_by_provider: { gemini: current },
@@ -33,26 +39,34 @@ export async function chatRoutes(app: FastifyInstance) {
       });
     }
 
-    const { question, model: requestedModel } = parsed.data;
+    const { question, model: requestedModel, embed_provider: embedProviderRaw } = parsed.data;
     const requested = requestedModel?.trim();
     const allowedModels = getUiChatModels();
     const selectedModel =
       requested && allowedModels.includes(requested) ? requested : undefined;
+    const allowedEmbedModes = getUiEmbedModes();
+    const requestedEmbedMode = embedProviderRaw?.trim().toLowerCase();
+    const selectedEmbedMode = (
+      requestedEmbedMode && allowedEmbedModes.includes(requestedEmbedMode as EmbedMode)
+        ? requestedEmbedMode
+        : getDefaultEmbedMode()
+    ) as EmbedMode;
 
     let top: Awaited<ReturnType<typeof retrieveTopK>>;
     try {
-      top = await retrieveTopK(question);
+      top = await retrieveTopK(question, { embedMode: selectedEmbedMode });
     } catch (err: any) {
       const msg = String(err?.message ?? err);
       if (
         msg.includes("Embedding request timeout") ||
         msg.includes("Gemini embeddings error") ||
+        msg.includes("Hugging Face embeddings error") ||
         msg.includes("fetch failed")
       ) {
         return {
           answer:
             "No pude consultar el servicio de embeddings en este momento.\n\n" +
-            "Revisa GEMINI_API_KEY y GEMINI_EMBED_MODEL.",
+            "Revisa tu configuración de embeddings: si usas Gemini, valida GEMINI_API_KEY; si usas Hugging Face, valida HF_API_TOKEN o HF_EMBED_URL.",
           sources: [],
           confidence: "low",
         } as const;

@@ -1,4 +1,4 @@
-import { embedText } from "../ingest/embed.js";
+import { embedText, type EmbedMode } from "../ingest/embed.js";
 import { cosineSimilarity } from "./score.js";
 import { getVectorsIndex } from "../store/vectors.js";
 
@@ -9,7 +9,10 @@ function getEnvNum(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export async function retrieveTopK(question: string): Promise<
+export async function retrieveTopK(
+  question: string,
+  opts?: { embedMode?: EmbedMode },
+): Promise<
   | { ok: false }
   | {
       ok: true;
@@ -24,7 +27,7 @@ export async function retrieveTopK(question: string): Promise<
   const topK = getEnvNum("TOP_K", 6);
   const minScore = getEnvNum("MIN_SCORE", 0.78);
 
-  const qEmb = await embedText(question, "RETRIEVAL_QUERY");
+  const qEmb = await embedText(question, "RETRIEVAL_QUERY", { mode: opts?.embedMode });
 
   // brute-force cosine (MVP)
   const scored = index.items.map((it) => ({

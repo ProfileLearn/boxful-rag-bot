@@ -26,6 +26,14 @@ services:
         value: gemini
       - key: EMBED_PROVIDER
         value: gemini
+      - key: HF_API_TOKEN
+        sync: false
+      - key: HF_EMBED_MODEL
+        value: intfloat/multilingual-e5-small
+      - key: HF_EMBED_URL
+        sync: false
+      - key: HF_EMBED_LOCAL_URL
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_CHAT_MODEL
@@ -34,6 +42,8 @@ services:
         value: gemini-embedding-001
       - key: UI_CHAT_MODELS_GEMINI
         value: gemini-2.5-flash,gemini-2.5-pro
+      - key: UI_EMBED_MODES
+        value: gemini,huggingface_api,local_cpu
       - key: TOP_K
         value: "6"
       - key: MIN_SCORE
