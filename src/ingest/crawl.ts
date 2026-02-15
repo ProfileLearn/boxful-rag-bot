@@ -24,7 +24,7 @@ const UA = getEnv(
   "USER_AGENT",
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 BoxfulRAGBot/0.1",
 );
-const maxPages = getEnvNum("KB_MAX_PAGES", 120, { min: 1, max: 5000, integer: true });
+const maxPages = getEnvNum("KB_MAX_PAGES", 240, { min: 1, max: 5000, integer: true });
 const retryCount = getEnvNum("SCRAPE_RETRIES", 5, { min: 0, max: 20, integer: true });
 const minDelayMs = getEnvNum("SCRAPE_MIN_DELAY_MS", 250, { min: 0, max: 30000, integer: true });
 const maxDelayMs = Math.max(
