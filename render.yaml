@@ -47,7 +47,7 @@ services:
       - key: TOP_K
         value: "6"
       - key: MIN_SCORE
-        value: "0.12"
+        value: "0.78"
       - key: INGEST_CONCURRENCY
         value: "1"
       - key: CHUNK_SIZE_CHARS

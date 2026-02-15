@@ -109,6 +109,12 @@ export async function runIngest() {
     ),
   );
 
+  if (items.length === 0) {
+    throw new Error(
+      "Ingest produced zero chunks. Check KB_ROOT access, parsing selectors, and embedding configuration.",
+    );
+  }
+
   const out: VectorsFile = {
     created_at: new Date().toISOString(),
     items,

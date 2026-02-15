@@ -6,15 +6,36 @@ function getEnv(name: string, fallback?: string): string {
   return v;
 }
 
+function getEnvNum(
+  name: string,
+  fallback: number,
+  opts?: { min?: number; max?: number; integer?: boolean },
+): number {
+  const raw = process.env[name];
+  const parsed = Number(raw);
+  let out = raw == null || !Number.isFinite(parsed) ? fallback : parsed;
+  if (opts?.integer) out = Math.trunc(out);
+  if (opts?.min !== undefined) out = Math.max(opts.min, out);
+  if (opts?.max !== undefined) out = Math.min(opts.max, out);
+  return out;
+}
+
 const UA = getEnv(
   "USER_AGENT",
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 BoxfulRAGBot/0.1",
 );
-const maxPages = Number(process.env.KB_MAX_PAGES ?? "120");
-const retryCount = Number(process.env.SCRAPE_RETRIES ?? "5");
-const minDelayMs = Number(process.env.SCRAPE_MIN_DELAY_MS ?? "250");
-const maxDelayMs = Number(process.env.SCRAPE_MAX_DELAY_MS ?? "2500");
-const requestTimeoutMs = Number(process.env.SCRAPE_HTTP_TIMEOUT_MS ?? "20000");
+const maxPages = getEnvNum("KB_MAX_PAGES", 120, { min: 1, max: 5000, integer: true });
+const retryCount = getEnvNum("SCRAPE_RETRIES", 5, { min: 0, max: 20, integer: true });
+const minDelayMs = getEnvNum("SCRAPE_MIN_DELAY_MS", 250, { min: 0, max: 30000, integer: true });
+const maxDelayMs = Math.max(
+  minDelayMs,
+  getEnvNum("SCRAPE_MAX_DELAY_MS", 2500, { min: 1, max: 120000, integer: true }),
+);
+const requestTimeoutMs = getEnvNum("SCRAPE_HTTP_TIMEOUT_MS", 20000, {
+  min: 1000,
+  max: 120000,
+  integer: true,
+});
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

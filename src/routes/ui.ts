@@ -211,6 +211,7 @@ const embedProviderSelect = document.getElementById("embed-provider-select");
 const API_BASE = String(window.BOXFUL_RAG_API_BASE || "").trim().replace(/\\/$/, "");
 const DEFAULT_MODELS = ${uiDefaultModels};
 const DEFAULT_EMBED_PROVIDERS = ["gemini", "huggingface_api", "local_cpu"];
+const SHOW_ERROR_DETAILS = String(window.BOXFUL_RAG_DEBUG || "") === "1";
 
 function apiUrl(path) {
   const normalizedPath = "/" + String(path || "").replace(/^\\/+/, "");
@@ -228,26 +229,48 @@ async function fetchWithTimeout(url, options, timeoutMs = 8000) {
   }
 }
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (m) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]
-  ));
+function sanitizeHttpUrl(rawUrl) {
+  try {
+    const url = new URL(String(rawUrl || ""), window.location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 function appendMessage(role, text, sources) {
   const node = document.createElement("article");
   node.className = "msg " + role;
+  node.textContent = String(text || "");
 
-  let content = esc(text || "");
   if (Array.isArray(sources) && sources.length) {
-    const links = sources.map((s) =>
-      '<a href="' + esc(s.url) + '" target="_blank" rel="noreferrer">' +
-      esc(s.title || s.url) + "</a>"
-    );
-    content += '<div class="sources"><strong>Fuentes:</strong> ' + links.join(" · ") + "</div>";
+    const box = document.createElement("div");
+    box.className = "sources";
+    const title = document.createElement("strong");
+    title.textContent = "Fuentes:";
+    box.appendChild(title);
+
+    let hasLinks = false;
+    for (const source of sources) {
+      const href = sanitizeHttpUrl(source?.url);
+      if (!href) continue;
+      const label = String(source?.title || source?.url || href);
+
+      box.appendChild(document.createTextNode(hasLinks ? " · " : " "));
+
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.textContent = label;
+      box.appendChild(link);
+      hasLinks = true;
+    }
+
+    if (hasLinks) node.appendChild(box);
   }
 
-  node.innerHTML = content;
   messages.appendChild(node);
   messages.scrollTop = messages.scrollHeight;
 }
@@ -355,7 +378,8 @@ form.addEventListener("submit", async (e) => {
     const details = String(err?.message || "").replace(/^Error:\\s*/, "").trim();
     appendMessage(
       "bot",
-      "Ocurrió un error consultando el servicio." + (details ? "\\n\\nDetalle: " + details : ""),
+      "Ocurrió un error consultando el servicio." +
+        (SHOW_ERROR_DETAILS && details ? "\\n\\nDetalle: " + details : ""),
     );
   } finally {
     send.disabled = false;

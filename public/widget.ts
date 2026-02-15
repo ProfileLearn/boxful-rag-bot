@@ -45,41 +45,51 @@
   const send = panel.querySelector(".bf-send");
   const close = panel.querySelector(".bf-x");
 
+  function sanitizeHttpUrl(rawUrl) {
+    try {
+      const url = new URL(String(rawUrl || ""), window.location.href);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
   function appendMsg(who, text, sources) {
     const p = document.createElement("div");
     p.className = "bf-msg " + (who === "user" ? "bf-msg-user" : "bf-msg-bot");
     p.textContent = (who === "user" ? "Tú: " : "Bot: ") + text;
 
-    if (sources && sources.length) {
+    if (Array.isArray(sources) && sources.length) {
       const s = document.createElement("div");
       s.className = "bf-src";
-      s.innerHTML =
-        "Fuentes: " +
-        sources
-          .map(
-            (x) =>
-              `<a href="${x.url}" target="_blank" rel="noreferrer">${escapeHtml(x.title || x.url)}</a>`,
-          )
-          .join(" · ");
-      p.appendChild(s);
+
+      const label = document.createElement("span");
+      label.textContent = "Fuentes: ";
+      s.appendChild(label);
+
+      let hasLinks = false;
+      for (const source of sources) {
+        const href = sanitizeHttpUrl(source?.url);
+        if (!href) continue;
+        const title = String(source?.title || source?.url || href);
+
+        if (hasLinks) s.appendChild(document.createTextNode(" · "));
+
+        const link = document.createElement("a");
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        link.textContent = title;
+        s.appendChild(link);
+        hasLinks = true;
+      }
+
+      if (hasLinks) p.appendChild(s);
     }
 
     body.appendChild(p);
     body.scrollTop = body.scrollHeight;
-  }
-
-  function escapeHtml(str) {
-    return String(str).replace(
-      /[&<>"']/g,
-      (m) =>
-        ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#039;",
-        })[m],
-    );
   }
 
   async function ask(q) {

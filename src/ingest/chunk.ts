@@ -6,8 +6,13 @@ function getEnvNum(name: string, fallback: number): number {
 }
 
 export function chunkText(text: string): string[] {
-  const size = getEnvNum("CHUNK_SIZE_CHARS", 950);
-  const overlap = getEnvNum("CHUNK_OVERLAP_CHARS", 200);
+  const rawSize = getEnvNum("CHUNK_SIZE_CHARS", 950);
+  const rawOverlap = getEnvNum("CHUNK_OVERLAP_CHARS", 200);
+  const size = Math.max(1, Math.trunc(rawSize));
+  const overlap = Math.min(
+    Math.max(0, Math.trunc(rawOverlap)),
+    Math.max(0, size - 1),
+  );
 
   const cleaned = text
     .replace(/\r/g, "")
@@ -15,6 +20,7 @@ export function chunkText(text: string): string[] {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
+  if (!cleaned) return [];
   if (cleaned.length <= size) return [cleaned];
 
   const chunks: string[] = [];

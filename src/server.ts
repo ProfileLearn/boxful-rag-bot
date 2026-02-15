@@ -2,11 +2,8 @@
 import "dotenv/config";
 
 import Fastify from "fastify";
-// @ts-ignore
 import cors from "@fastify/cors";
-// @ts-ignore
 import helmet from "@fastify/helmet";
-// @ts-ignore
 import rateLimit from "@fastify/rate-limit";
 import { healthRoutes } from "./routes/health.js";
 import { chatRoutes } from "./routes/chat.js";
@@ -22,6 +19,7 @@ function getEnv(name: string, fallback?: string): string {
 async function main() {
   const app = Fastify({
     logger: true,
+    trustProxy: true,
     genReqId: () => crypto.randomUUID(),
   });
 
