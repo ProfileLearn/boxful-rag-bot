@@ -66,6 +66,53 @@
     }
   }
 
+  function escapeHtml(rawText) {
+    return String(rawText ?? "").replace(/[&<>"']/g, (char) => {
+      if (char === "&") return "&amp;";
+      if (char === "<") return "&lt;";
+      if (char === ">") return "&gt;";
+      if (char === '"') return "&quot;";
+      return "&#39;";
+    });
+  }
+
+  function escapeHtmlAttr(rawText) {
+    return escapeHtml(rawText).replace(/`/g, "&#96;");
+  }
+
+  function renderInlineMarkdown(rawText) {
+    const stashed = [];
+    const stash = (html) => {
+      const marker = "@@MD_TOKEN_" + stashed.length + "@@";
+      stashed.push(html);
+      return marker;
+    };
+
+    let html = escapeHtml(rawText);
+
+    html = html.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, label, rawUrl) => {
+      const href = sanitizeHttpUrl(rawUrl);
+      if (!href) return label;
+      return stash(
+        '<a href="' +
+          escapeHtmlAttr(href) +
+          '" target="_blank" rel="noreferrer noopener">' +
+          label +
+          "</a>",
+      );
+    });
+
+    html = html.replace(/`([^`\n]+)`/g, (_, code) => {
+      return stash("<code>" + code + "</code>");
+    });
+    html = html.replace(/\*\*([^\n]+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(^|[^\w])\*([^\n*]+?)\*(?=[^\w]|$)/g, "$1<em>$2</em>");
+
+    return html.replace(/@@MD_TOKEN_(\d+)@@/g, (match, index) => {
+      return stashed[Number(index)] || match;
+    });
+  }
+
   function mountWidget() {
     if (document.getElementById("bf-widget-host")) return;
 
@@ -175,6 +222,20 @@
         margin: 0 0 10px;
         white-space: pre-wrap;
       }
+      .bf-msg a {
+        color: #0a5f89;
+        text-decoration: underline;
+      }
+      .bf-msg code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.93em;
+        background: #f0f4f6;
+        border-radius: 4px;
+        padding: 1px 4px;
+      }
+      .bf-msg-prefix {
+        font-weight: 700;
+      }
       .bf-msg-user {
         color: #111;
         font-weight: 600;
@@ -269,7 +330,11 @@
     function appendMsg(who, text, sources) {
       const p = document.createElement("div");
       p.className = "bf-msg " + (who === "user" ? "bf-msg-user" : "bf-msg-bot");
-      p.textContent = (who === "user" ? "Tu: " : "Bot: ") + text;
+      p.innerHTML =
+        '<span class="bf-msg-prefix">' +
+        (who === "user" ? "Tu: " : "Bot: ") +
+        "</span>" +
+        renderInlineMarkdown(text);
 
       if (Array.isArray(sources) && sources.length) {
         const s = document.createElement("div");

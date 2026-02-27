@@ -89,6 +89,17 @@ const html = `<!doctype html>
         line-height: 1.45;
         font-size: 14px;
       }
+      .msg a {
+        color: var(--brand-2);
+        text-decoration: underline;
+      }
+      .msg code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.93em;
+        background: #e8f0f2;
+        border-radius: 4px;
+        padding: 1px 4px;
+      }
       .msg.user {
         margin-left: auto;
         color: #fff;
@@ -239,10 +250,57 @@ function sanitizeHttpUrl(rawUrl) {
   }
 }
 
+function escapeHtml(rawText) {
+  return String(rawText ?? "").replace(/[&<>"']/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    return "&#39;";
+  });
+}
+
+function escapeHtmlAttr(rawText) {
+  return escapeHtml(rawText).replace(/\\x60/g, "&#96;");
+}
+
+function renderInlineMarkdown(rawText) {
+  const stashed = [];
+  const stash = (html) => {
+    const marker = "@@MD_TOKEN_" + stashed.length + "@@";
+    stashed.push(html);
+    return marker;
+  };
+
+  let html = escapeHtml(rawText);
+
+  html = html.replace(/\\[([^\\]\\n]+)\\]\\(([^)\\s]+)\\)/g, (_, label, rawUrl) => {
+    const href = sanitizeHttpUrl(rawUrl);
+    if (!href) return label;
+    return stash(
+      '<a href="' +
+        escapeHtmlAttr(href) +
+        '" target="_blank" rel="noreferrer noopener">' +
+        label +
+        "</a>",
+    );
+  });
+
+  html = html.replace(/\\x60([^\\x60\\n]+)\\x60/g, (_, code) => {
+    return stash("<code>" + code + "</code>");
+  });
+  html = html.replace(/\\*\\*([^\\n]+?)\\*\\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^\\w])\\*([^\\n*]+?)\\*(?=[^\\w]|$)/g, "$1<em>$2</em>");
+
+  return html.replace(/@@MD_TOKEN_(\\d+)@@/g, (match, index) => {
+    return stashed[Number(index)] || match;
+  });
+}
+
 function appendMessage(role, text, sources) {
   const node = document.createElement("article");
   node.className = "msg " + role;
-  node.textContent = String(text || "");
+  node.innerHTML = renderInlineMarkdown(text);
 
   if (Array.isArray(sources) && sources.length) {
     const box = document.createElement("div");
