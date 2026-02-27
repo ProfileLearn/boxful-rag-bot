@@ -56,6 +56,19 @@
     2147483000,
   );
 
+  function getMountedHost() {
+    return document.getElementById("bf-widget-host");
+  }
+
+  function hideMountedPanel() {
+    const host = getMountedHost();
+    if (!host || !host.shadowRoot) return;
+    const panel = host.shadowRoot.querySelector(".bf-chat-panel");
+    const input = host.shadowRoot.querySelector(".bf-inp");
+    if (panel) panel.hidden = true;
+    if (input && typeof input.blur === "function") input.blur();
+  }
+
   function sanitizeHttpUrl(rawUrl) {
     try {
       const url = new URL(String(rawUrl || ""), window.location.href);
@@ -424,4 +437,8 @@
   } else {
     mountWidget();
   }
+
+  document.addEventListener("turbo:load", mountWidget);
+  document.addEventListener("turbo:render", mountWidget);
+  document.addEventListener("turbo:before-cache", hideMountedPanel);
 })();
