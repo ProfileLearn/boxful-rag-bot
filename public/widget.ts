@@ -1,12 +1,92 @@
 (function () {
   const globalObject = window;
 
-  if (globalObject.__BOXFUL_WIDGET_LOADED__) return;
+  if (globalObject.__BOXFUL_WIDGET_LOADED__) {
+    if (
+      globalObject.BoxfulSupportWidget &&
+      typeof globalObject.BoxfulSupportWidget.mount === "function"
+    ) {
+      globalObject.BoxfulSupportWidget.mount();
+    }
+    return;
+  }
   globalObject.__BOXFUL_WIDGET_LOADED__ = true;
 
-  const API_BASE =
-    globalObject.BOXFUL_RAG_API_BASE || "https://TU-API-EN-RENDER.onrender.com";
+  function firstDefined(candidates) {
+    for (const value of candidates) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      return value;
+    }
+    return undefined;
+  }
+
+  function normalizeApiBase(rawValue) {
+    const raw = String(rawValue ?? "").trim();
+    if (!raw) return "";
+    try {
+      const url = new URL(raw, window.location.href);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      return "";
+    }
+  }
+
+  function getBootScript() {
+    if (document.currentScript && document.currentScript.tagName === "SCRIPT") {
+      return document.currentScript;
+    }
+
+    const scripts = document.getElementsByTagName("script");
+    for (let i = scripts.length - 1; i >= 0; i -= 1) {
+      const src = String(scripts[i].getAttribute("src") || "");
+      if (/\/widget\.js(?:[?#]|$)/i.test(src)) return scripts[i];
+    }
+    return null;
+  }
+
+  function readScriptOption(scriptEl, params, dataAttr, queryKey) {
+    if (scriptEl) {
+      const dataValue = scriptEl.getAttribute(`data-${dataAttr}`);
+      if (typeof dataValue === "string" && dataValue.trim()) return dataValue.trim();
+    }
+    const queryValue = params.get(queryKey);
+    if (typeof queryValue === "string" && queryValue.trim()) return queryValue.trim();
+    return undefined;
+  }
+
+  function inferApiBaseFromScriptUrl(scriptUrl) {
+    if (!scriptUrl) return "";
+    const cleanPath = scriptUrl.pathname.replace(/\/+$/, "");
+    const basePath = cleanPath.replace(/\/widget\.js$/i, "");
+    return normalizeApiBase(`${scriptUrl.origin}${basePath}`);
+  }
+
+  const bootScript = getBootScript();
+  const bootScriptUrl = (() => {
+    if (!bootScript) return null;
+    const src = String(bootScript.getAttribute("src") || "").trim();
+    if (!src) return null;
+    try {
+      return new URL(src, window.location.href);
+    } catch {
+      return null;
+    }
+  })();
+  const bootParams = bootScriptUrl ? bootScriptUrl.searchParams : new URLSearchParams();
   const widgetConfig = globalObject.BOXFUL_WIDGET_CONFIG || {};
+
+  const API_BASE =
+    normalizeApiBase(
+      firstDefined([
+        readScriptOption(bootScript, bootParams, "api-base", "api_base"),
+        widgetConfig.apiBase,
+        globalObject.BOXFUL_RAG_API_BASE,
+      ]),
+    ) ||
+    inferApiBaseFromScriptUrl(bootScriptUrl) ||
+    normalizeApiBase(window.location.origin);
 
   function getValidAnchor(rawValue) {
     const anchor = String(rawValue || "").trim().toLowerCase();
@@ -38,26 +118,189 @@
     return String(Math.max(1, Math.trunc(n)));
   }
 
+  function toPositiveInt(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(1, Math.trunc(n));
+  }
+
   const anchor = getValidAnchor(
-    widgetConfig.anchor || globalObject.BOXFUL_WIDGET_ANCHOR,
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "anchor", "anchor"),
+      widgetConfig.anchor,
+      globalObject.BOXFUL_WIDGET_ANCHOR,
+    ]),
   );
   const vertical = anchor.startsWith("top-") ? "top" : "bottom";
   const horizontal = anchor.endsWith("-left") ? "left" : "right";
   const offsetX = toCssPixel(
-    widgetConfig.offsetX ?? globalObject.BOXFUL_WIDGET_OFFSET_X,
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "offset-x", "offset_x"),
+      widgetConfig.offsetX,
+      globalObject.BOXFUL_WIDGET_OFFSET_X,
+    ]),
     16,
   );
   const offsetY = toCssPixel(
-    widgetConfig.offsetY ?? globalObject.BOXFUL_WIDGET_OFFSET_Y,
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "offset-y", "offset_y"),
+      widgetConfig.offsetY,
+      globalObject.BOXFUL_WIDGET_OFFSET_Y,
+    ]),
     16,
   );
   const zIndex = toZIndex(
-    widgetConfig.zIndex ?? globalObject.BOXFUL_WIDGET_Z_INDEX,
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "z-index", "z_index"),
+      widgetConfig.zIndex,
+      globalObject.BOXFUL_WIDGET_Z_INDEX,
+    ]),
     2147483000,
   );
 
+  const storagePrefixRaw = String(
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "storage-key-prefix", "storage_prefix"),
+      widgetConfig.storageKeyPrefix,
+      globalObject.BOXFUL_WIDGET_STORAGE_PREFIX,
+      "boxful_widget_v1",
+    ]),
+  ).trim();
+  const storagePrefix = storagePrefixRaw || "boxful_widget_v1";
+  const storageConversationKey = `${storagePrefix}:conversation_id`;
+  const storageMessagesKey = `${storagePrefix}:messages`;
+  const maxPersistedMessages = toPositiveInt(
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "max-persisted-messages", "max_messages"),
+      widgetConfig.maxPersistedMessages,
+      globalObject.BOXFUL_WIDGET_MAX_MESSAGES,
+    ]),
+    40,
+  );
+  const greetingText = String(
+    firstDefined([
+      readScriptOption(bootScript, bootParams, "greeting-text", "greeting"),
+      widgetConfig.greetingText,
+      globalObject.BOXFUL_WIDGET_GREETING,
+      "Hola. Soy el asistente de soporte de Boxful. ¿En qué te ayudo?",
+    ]),
+  ).trim();
+
+  const hostId = "bf-widget-host";
+  const state = {
+    conversationId: "",
+    messages: [],
+  };
+
+  function storageGet(key) {
+    try {
+      return globalObject.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function storageSet(key, value) {
+    try {
+      globalObject.localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function createConversationId() {
+    if (globalObject.crypto && typeof globalObject.crypto.randomUUID === "function") {
+      return globalObject.crypto.randomUUID();
+    }
+    return `c_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  }
+
+  function isValidConversationId(raw) {
+    return /^[A-Za-z0-9._:-]{8,120}$/.test(String(raw || "").trim());
+  }
+
+  function setConversationId(rawId) {
+    const candidate = String(rawId || "").trim();
+    if (!isValidConversationId(candidate)) return;
+    state.conversationId = candidate;
+    storageSet(storageConversationKey, candidate);
+  }
+
+  function ensureConversationId() {
+    if (isValidConversationId(state.conversationId)) return state.conversationId;
+    const stored = String(storageGet(storageConversationKey) || "").trim();
+    if (isValidConversationId(stored)) {
+      state.conversationId = stored;
+      return state.conversationId;
+    }
+    state.conversationId = createConversationId();
+    storageSet(storageConversationKey, state.conversationId);
+    return state.conversationId;
+  }
+
+  function sanitizeHttpUrl(rawUrl) {
+    try {
+      const url = new URL(String(rawUrl || ""), window.location.href);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function normalizeSources(rawSources) {
+    if (!Array.isArray(rawSources)) return [];
+    const normalized = [];
+
+    for (const source of rawSources) {
+      const href = sanitizeHttpUrl(source?.url);
+      if (!href) continue;
+      const title = String(source?.title || href).trim() || href;
+      normalized.push({ title, url: href });
+      if (normalized.length >= 8) break;
+    }
+
+    return normalized;
+  }
+
+  function loadPersistedMessages() {
+    const raw = storageGet(storageMessagesKey);
+    if (!raw) return [];
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+
+      const out = [];
+      for (const item of parsed) {
+        const who = item?.who === "user" ? "user" : item?.who === "bot" ? "bot" : "";
+        const text = String(item?.text || "").trim();
+        if (!who || !text) continue;
+        out.push({
+          who,
+          text,
+          sources: normalizeSources(item?.sources),
+        });
+      }
+
+      if (out.length > maxPersistedMessages) {
+        return out.slice(out.length - maxPersistedMessages);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  function persistMessages() {
+    const latest = state.messages.slice(-maxPersistedMessages);
+    state.messages = latest;
+    storageSet(storageMessagesKey, JSON.stringify(latest));
+  }
+
   function getMountedHost() {
-    return document.getElementById("bf-widget-host");
+    return document.getElementById(hostId);
   }
 
   function hideMountedPanel() {
@@ -69,14 +312,13 @@
     if (input && typeof input.blur === "function") input.blur();
   }
 
-  function sanitizeHttpUrl(rawUrl) {
-    try {
-      const url = new URL(String(rawUrl || ""), window.location.href);
-      if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-      return url.toString();
-    } catch {
-      return null;
-    }
+  function openMountedPanel() {
+    const host = getMountedHost();
+    if (!host || !host.shadowRoot) return;
+    const panel = host.shadowRoot.querySelector(".bf-chat-panel");
+    const input = host.shadowRoot.querySelector(".bf-inp");
+    if (panel) panel.hidden = false;
+    if (input && typeof input.focus === "function") input.focus();
   }
 
   function escapeHtml(rawText) {
@@ -126,11 +368,39 @@
     });
   }
 
+  function apiUrl(path) {
+    const normalizedPath = "/" + String(path || "").replace(/^\/+/, "");
+    if (!API_BASE) return normalizedPath;
+    return API_BASE + normalizedPath;
+  }
+
+  function resetConversation() {
+    state.conversationId = createConversationId();
+    storageSet(storageConversationKey, state.conversationId);
+    state.messages = greetingText
+      ? [{ who: "bot", text: greetingText, sources: [] }]
+      : [];
+    persistMessages();
+
+    const host = getMountedHost();
+    if (host) host.remove();
+    mountWidget();
+    openMountedPanel();
+  }
+
   function mountWidget() {
-    if (document.getElementById("bf-widget-host")) return;
+    if (getMountedHost()) return;
+    if (!document.body) return;
+
+    ensureConversationId();
+    state.messages = loadPersistedMessages();
+    if (!state.messages.length && greetingText) {
+      state.messages = [{ who: "bot", text: greetingText, sources: [] }];
+      persistMessages();
+    }
 
     const host = document.createElement("div");
-    host.id = "bf-widget-host";
+    host.id = hostId;
     host.setAttribute("data-v", vertical);
     host.setAttribute("data-h", horizontal);
     host.style.position = "fixed";
@@ -333,23 +603,32 @@
     shadow.appendChild(style);
     shadow.appendChild(btn);
     shadow.appendChild(panel);
-    document.documentElement.appendChild(host);
+    document.body.appendChild(host);
 
     const body = panel.querySelector(".bf-chat-body");
     const inp = panel.querySelector(".bf-inp");
     const send = panel.querySelector(".bf-send");
     const close = panel.querySelector(".bf-x");
 
-    function appendMsg(who, text, sources) {
+    if (!body || !inp || !send || !close) return;
+
+    function appendMsg(who, text, sources, opts) {
+      const safeWho = who === "user" ? "user" : "bot";
+      const safeText = String(text || "").trim();
+      if (!safeText) return;
+
+      const safeSources = normalizeSources(sources);
+      const shouldPersist = !(opts && opts.persist === false);
+
       const p = document.createElement("div");
-      p.className = "bf-msg " + (who === "user" ? "bf-msg-user" : "bf-msg-bot");
+      p.className = "bf-msg " + (safeWho === "user" ? "bf-msg-user" : "bf-msg-bot");
       p.innerHTML =
         '<span class="bf-msg-prefix">' +
-        (who === "user" ? "Tu: " : "Bot: ") +
+        (safeWho === "user" ? "Tu: " : "Bot: ") +
         "</span>" +
-        renderInlineMarkdown(text);
+        renderInlineMarkdown(safeText);
 
-      if (Array.isArray(sources) && sources.length) {
+      if (safeSources.length) {
         const s = document.createElement("div");
         s.className = "bf-src";
 
@@ -358,18 +637,14 @@
         s.appendChild(label);
 
         let hasLinks = false;
-        for (const source of sources) {
-          const href = sanitizeHttpUrl(source?.url);
-          if (!href) continue;
-          const title = String(source?.title || source?.url || href);
-
+        for (const source of safeSources) {
           if (hasLinks) s.appendChild(document.createTextNode(" · "));
 
           const link = document.createElement("a");
-          link.href = href;
+          link.href = source.url;
           link.target = "_blank";
           link.rel = "noreferrer noopener";
-          link.textContent = title;
+          link.textContent = source.title;
           s.appendChild(link);
           hasLinks = true;
         }
@@ -379,26 +654,80 @@
 
       body.appendChild(p);
       body.scrollTop = body.scrollHeight;
+
+      if (!shouldPersist) return;
+
+      state.messages.push({
+        who: safeWho,
+        text: safeText,
+        sources: safeSources,
+      });
+      persistMessages();
     }
 
-    async function ask(q) {
-      appendMsg("user", q);
+    for (const msg of state.messages) {
+      appendMsg(msg.who, msg.text, msg.sources, { persist: false });
+    }
+
+    let isSending = false;
+
+    async function ask(rawQuestion) {
+      const q = String(rawQuestion || "").trim();
+      if (!q || isSending) return;
+
+      appendMsg("user", q, []);
+      isSending = true;
+      send.disabled = true;
+      inp.disabled = true;
 
       try {
-        const res = await fetch(API_BASE.replace(/\/$/, "") + "/v1/chat", {
+        const res = await fetch(apiUrl("/v1/chat"), {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ question: q }),
+          body: JSON.stringify({
+            question: q,
+            conversation_id: ensureConversationId(),
+          }),
         });
 
-        const data = await res.json();
-        appendMsg("bot", data.answer || "No pude responder.", data.sources || []);
+        const raw = await res.text();
+        let data = {};
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          data = {};
+        }
+
+        if (typeof data?.conversation_id === "string") {
+          setConversationId(data.conversation_id);
+        }
+
+        if (!res.ok) {
+          const details =
+            typeof data?.error === "string"
+              ? data.error
+              : typeof data?.message === "string"
+                ? data.message
+                : raw.slice(0, 240);
+          throw new Error(details || "chat_error");
+        }
+
+        appendMsg(
+          "bot",
+          typeof data?.answer === "string" ? data.answer : "No pude responder.",
+          Array.isArray(data?.sources) ? data.sources : [],
+        );
       } catch {
         appendMsg(
           "bot",
           "Hubo un error al consultar el servicio. Intenta de nuevo.",
           [],
         );
+      } finally {
+        isSending = false;
+        send.disabled = false;
+        inp.disabled = false;
+        inp.focus();
       }
     }
 
@@ -409,6 +738,7 @@
 
     function hide() {
       panel.hidden = true;
+      inp.blur();
     }
 
     btn.addEventListener("click", () => {
@@ -431,6 +761,16 @@
       send.click();
     });
   }
+
+  globalObject.BoxfulSupportWidget = {
+    mount: mountWidget,
+    open: () => {
+      mountWidget();
+      openMountedPanel();
+    },
+    hide: hideMountedPanel,
+    resetConversation,
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", mountWidget, { once: true });
