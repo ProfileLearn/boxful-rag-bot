@@ -4,6 +4,7 @@ import { retrieveTopK } from "../rag/retrieve.js";
 import { buildStrictPrompt } from "../rag/prompt.js";
 import { askLlm, getUiChatModels } from "../rag/llm.js";
 import { getDefaultEmbedMode, getUiEmbedModes, type EmbedMode } from "../ingest/embed.js";
+import { ensureAllowedOrigin } from "../security/origin.js";
 import {
   appendConversationTurn,
   ensureConversationId,
@@ -62,6 +63,14 @@ export async function chatRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/chat", async (req, reply) => {
+    const originCheck = ensureAllowedOrigin(req);
+    if (!originCheck.ok) {
+      return reply.code(originCheck.code).send({
+        error: originCheck.error,
+        message: originCheck.message,
+      });
+    }
+
     const parsed = ChatIn.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({
